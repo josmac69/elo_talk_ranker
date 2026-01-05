@@ -196,3 +196,8 @@ You can also enable **"Round Ranking"** in the main window (Display Options). Wh
 ## Credits
 
 **Note:** The original version of this script was generated using **ChatGPT Pro 5.2**. All subsequent updates, refactoring, and feature implementations have been performed using [Google Antigravity GUI](https://antigravity.google) and **Gemini 3 Pro**.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
