@@ -41,7 +41,7 @@ import os
 import random
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Dict, List, Tuple, Optional, Any, Set
 
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, font
@@ -111,6 +111,9 @@ class EloEngine:
 
         # History for undo + audit trail
         self.history: List[Dict[str, Any]] = []
+
+        # Abstained talks (skip in comparisons, empty in ranking)
+        self.abstained_ids: Set[str] = set()
 
     def expected_win_prob(self, r_a: float, r_b: float) -> float:
         # Standard Elo logistic with base-10
@@ -371,8 +374,12 @@ class ComparisonScheduler:
 
     def choose_next_set(self, m: int) -> List[str]:
         all_ids = list(self.talks.keys())
-        if m > len(all_ids):
-            raise ValueError("Not enough talks to display that many at once.")
+
+        # Filter out abstained
+        active_ids = [tid for tid in all_ids if tid not in self.engine.abstained_ids]
+
+        if m > len(active_ids):
+            raise ValueError("Not enough active talks to display that many at once.")
 
         explore_mode = (self.rng.random() < self.explore_rate)
 
@@ -384,10 +391,10 @@ class ComparisonScheduler:
         max_rounds = max(rounds_seen.values()) if rounds_seen else 0
 
         # Pool: talks with lowest exposure (within delta)
-        pool = [tid for tid in all_ids if rounds_seen[tid] <= min_rounds + self.pool_delta_rounds]
+        pool = [tid for tid in active_ids if rounds_seen[tid] <= min_rounds + self.pool_delta_rounds]
         if len(pool) < m:
             # widen pool deterministically
-            pool = sorted(all_ids, key=lambda tid: rounds_seen[tid])[:max(m, min(50, len(all_ids)))]
+            pool = sorted(active_ids, key=lambda tid: rounds_seen[tid])[:max(m, min(50, len(active_ids)))]
 
         # Pick a seed from low-exposure pool, with some randomness for coverage
         seed = self.rng.choice(pool)
@@ -397,7 +404,7 @@ class ComparisonScheduler:
 
         # Select remaining talks with weighted sampling
         while len(selected) < m:
-            candidates = [tid for tid in all_ids if tid not in selected]
+            candidates = [tid for tid in active_ids if tid not in selected]
             weights: List[float] = []
             for tid in candidates:
                 # Exposure: prefer those with fewer rounds
@@ -474,6 +481,7 @@ def save_state(csv_path: Path, talks: Dict[str, Talk], engine: EloEngine, app_cf
             "pair_counts": pair_counts_ser,
             "rounds_done": engine.rounds_done,
             "history": engine.history[-5000:],  # cap size defensively
+            "abstained_ids": list(engine.abstained_ids),
         },
         "app_cfg": app_cfg,
     }
@@ -543,8 +551,17 @@ def export_rankings_csv(
         except ValueError:
              ranked = sorted(engine.ratings.keys())
     else:
-        # Default to rank
-        ranked = engine.ranked_ids()
+        # Default to rank: Sort by rating (descending).
+        # Exclude abstained from the ranking list order basically?
+        # Or put abstained at bottom?
+        # Let's get "valid" ranked IDs first
+        valid = [tid for tid in engine.ranked_ids() if tid not in engine.abstained_ids]
+
+        # Abstained at bottom, sorted logic? or just appended
+        abstained = sorted([tid for tid in engine.abstained_ids if tid in engine.ratings], key=lambda x: engine.ratings[x], reverse=True)
+        # Note: abstained talks still have ratings technically, but we treat them as unranked output.
+
+        ranked = valid + abstained
 
     # Calculate min/max elo for scaling (always needed for score calc even if score not exported?)
     # We calculate it based on ALL ranked items to stay consistent
@@ -556,15 +573,15 @@ def export_rankings_csv(
     # Place is rank index (1..N) if sorted by rank, else it might be confusing?
     # Usually "Place" implies ranking order. If sorted by ID, "Place" is just row number?
     # Let's keep "Place" as the position in the current list being exported.
-    
+
     # Headers map
     # We will just use the list of strings provided in `columns`.
     # But we need to know how to map a column name to value.
-    
+
     col_map = {
-        "Place": lambda i, tid, t, r, s: i,
-        "Elo": lambda i, tid, t, r, s: f"{r:.0f}" if round_ranking else f"{r:.2f}",
-        "Score": lambda i, tid, t, r, s: f"{s:.0f}" if round_ranking else f"{s:.2f}",
+        "Place": lambda i, tid, t, r, s: i if tid not in engine.abstained_ids else "",
+        "Elo": lambda i, tid, t, r, s: (f"{r:.0f}" if round_ranking else f"{r:.2f}") if tid not in engine.abstained_ids else "",
+        "Score": lambda i, tid, t, r, s: (f"{s:.0f}" if round_ranking else f"{s:.2f}") if tid not in engine.abstained_ids else "",
         "ID": lambda i, tid, t, r, s: tid,
         "Speaker": lambda i, tid, t, r, s: t.speaker,
         "Title": lambda i, tid, t, r, s: t.title,
@@ -573,16 +590,42 @@ def export_rankings_csv(
 
     # Default columns if None
     if columns is None:
-        columns = ["Place", "Elo", "Score", "ID", "Speaker", "Title"]
+        columns = ["ID", "Place", "Elo", "Score", "Speaker", "Title"]
 
     with out_path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(columns)
-        
+
         for i, tid in enumerate(ranked, start=1):
             t = talks[tid]
             rating = engine.ratings[tid]
-            
+
+            # Recalculate 'i' if abstained?
+            # Ideally "Place" should skip abstained?
+            # If sorted by rank, active talks get 1..N. Abstained get nothing.
+            # If sorted by ID, Place should probably still reflect their rank order if they were valid?
+            # But requirement says: "show them with empty ranks".
+            # So if abstained, Place is "".
+
+            # To get correct "Place" for valid talks even if mixed or sorted by ID:
+            # We can pre-calculate the rank of every valid ID.
+            pass
+
+    # Pre-calculate ranks for valid items
+    valid_ranked = [tid for tid in engine.ranked_ids() if tid not in engine.abstained_ids]
+    rank_map = {tid: i for i, tid in enumerate(valid_ranked, start=1)}
+
+    with out_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(columns)
+
+        for tid in ranked:
+            t = talks[tid]
+            rating = engine.ratings[tid]
+
+            # Place
+            place = rank_map.get(tid, "")
+
             # Calc score
             if max_elo > min_elo:
                  norm = (rating - min_elo) / (max_elo - min_elo)
@@ -593,11 +636,11 @@ def export_rankings_csv(
             row = []
             for col in columns:
                 if col in col_map:
-                    val = col_map[col](i, tid, t, rating, score)
+                    val = col_map[col](place, tid, t, rating, score)
                     row.append(val)
                 else:
                     row.append("")
-            
+
             writer.writerow(row)
 
 
@@ -672,6 +715,7 @@ class TalkRankerApp(tk.Tk):
         self.show_current_rank = tk.BooleanVar(value=False)
 
         self.ranking_window_geometry: Optional[str] = None
+        self.abstain_window_geometry: Optional[str] = None
         self.ranking_win: Optional[tk.Toplevel] = None
 
         # Build UI
@@ -737,6 +781,8 @@ class TalkRankerApp(tk.Tk):
         action_menu = tk.Menu(menubar, tearoff=0)
         action_menu.add_command(label="Undo Last Comparison", command=self.on_undo)
         action_menu.add_command(label="Skip / New Set", command=self.on_skip)
+        action_menu.add_separator()
+        action_menu.add_command(label="Manage Abstentions...", command=self.on_manage_abstentions)
         menubar.add_cascade(label="Actions", menu=action_menu)
 
         self.config(menu=menubar)
@@ -791,6 +837,10 @@ class TalkRankerApp(tk.Tk):
         b_show = ttk.Button(btns, text="Show ranking", command=self.on_show_rankings)
         b_show.pack(side=tk.LEFT, padx=5)
         self._add_tooltip(b_show, "Display current leaderboard and statistics.")
+
+        b_abs = ttk.Button(btns, text="Manage Abstentions", command=self.on_manage_abstentions)
+        b_abs.pack(side=tk.LEFT, padx=5)
+        self._add_tooltip(b_abs, "Manage excluded/abstained talks.")
 
         b_ex = ttk.Button(btns, text="Export CSV", command=self.on_export)
         b_ex.pack(side=tk.LEFT, padx=5)
@@ -949,6 +999,7 @@ class TalkRankerApp(tk.Tk):
 
             self.engine.rounds_done = int(eng.get("rounds_done", 0))
             self.engine.history = list(eng.get("history", []))
+            self.engine.abstained_ids = set(eng.get("abstained_ids", []))
 
             # Restore UI config if available
             cfg = state.get("app_cfg", {})
@@ -993,6 +1044,8 @@ class TalkRankerApp(tk.Tk):
 
             if "ranking_window_geometry" in cfg:
                 self.ranking_window_geometry = cfg["ranking_window_geometry"]
+            if "abstain_window_geometry" in cfg:
+                self.abstain_window_geometry = cfg["abstain_window_geometry"]
 
         except Exception:
             # If state is malformed, ignore safely
@@ -1040,6 +1093,8 @@ class TalkRankerApp(tk.Tk):
         }
         if self.ranking_window_geometry:
              app_cfg["ranking_window_geometry"] = self.ranking_window_geometry
+        if self.abstain_window_geometry:
+             app_cfg["abstain_window_geometry"] = self.abstain_window_geometry
 
         try:
             save_state(self.csv_path, self.talks, self.engine, app_cfg)
@@ -1399,18 +1454,25 @@ class TalkRankerApp(tk.Tk):
 
         tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         yscroll.pack(side=tk.RIGHT, fill=tk.Y)
+        # Tag config for visibility
+        tree.tag_configure("abstained_row", foreground="red")
 
         ranked = self.engine.ranked_ids()
 
-        # Calculate min/max elo for scaling
-        all_ratings = [self.engine.ratings[tid] for tid in ranked]
-        min_elo = min(all_ratings) if all_ratings else 0
-        max_elo = max(all_ratings) if all_ratings else 1
+        # Split into valid and abstained for display
+        valid_ranked = [tid for tid in ranked if tid not in self.engine.abstained_ids]
+        abstained = [tid for tid in ranked if tid in self.engine.abstained_ids]
+
+        # Calculate min/max only from valid
+        valid_ratings = [self.engine.ratings[tid] for tid in valid_ranked]
+        min_elo = min(valid_ratings) if valid_ratings else 0
+        max_elo = max(valid_ratings) if valid_ratings else 1
 
         user_min = float(self.scale_min.get())
         user_max = float(self.scale_max.get())
 
-        for i, tid in enumerate(ranked, start=1):
+        # Show valid first
+        for i, tid in enumerate(valid_ranked, start=1):
             t = self.talks[tid]
             rating = self.engine.ratings[tid]
 
@@ -1440,6 +1502,213 @@ class TalkRankerApp(tk.Tk):
                 ),
             )
 
+        # Show abstained at bottom
+        for tid in abstained:
+            t = self.talks[tid]
+            tree.insert(
+                "",
+                "end",
+                values=(
+                    "",
+                    "",
+                    "",
+                    self.engine.rounds_seen[tid],
+                    self.engine.pairwise_seen[tid],
+                    tid,
+                    t.speaker,
+                    t.title,
+                    t.track,
+                ),
+                tags=("abstained",)
+            )
+
+        tree.tag_configure("abstained", foreground="gray")
+
+    def on_manage_abstentions(self) -> None:
+        if self.engine is None or not self.talks:
+            return
+
+        win = tk.Toplevel(self)
+        if self.abstain_window_geometry:
+            win.geometry(self.abstain_window_geometry)
+        else:
+            win.geometry("900x700")
+            # Center in parent
+            x = self.winfo_rootx() + (self.winfo_width() // 2) - 450
+            y = self.winfo_rooty() + (self.winfo_height() // 2) - 350
+            win.geometry(f"+{x}+{y}")
+
+        def _on_win_close():
+            self.abstain_window_geometry = win.geometry()
+            win.destroy()
+        win.protocol("WM_DELETE_WINDOW", _on_win_close)
+
+        # Control frame (Filter + Show Only Abstained)
+        ctrl_frame = ttk.Frame(win, padding=5)
+        ctrl_frame.pack(fill=tk.X)
+
+        ttk.Label(ctrl_frame, text="Filter:").pack(side=tk.LEFT)
+        filter_var = tk.StringVar()
+        filter_entry = ttk.Entry(ctrl_frame, textvariable=filter_var)
+        filter_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+
+        show_only_abstained = tk.BooleanVar(value=False)
+        ttk.Checkbutton(ctrl_frame, text="Show only abstained", variable=show_only_abstained).pack(side=tk.LEFT, padx=5)
+
+        # Treeview
+        tree_frame = ttk.Frame(win, padding=5)
+        tree_frame.pack(fill=tk.BOTH, expand=True)
+
+        cols = ("Abstained", "ID", "Speaker", "Title")
+        tree = ttk.Treeview(tree_frame, columns=cols, show="headings", selectmode="browse")
+
+        tree.heading("Abstained", text="Abstain?", command=lambda: _sort_by("Abstained"))
+        tree.heading("ID", text="ID", command=lambda: _sort_by("ID"))
+        tree.heading("Speaker", text="Speaker", command=lambda: _sort_by("Speaker"))
+        tree.heading("Title", text="Title", command=lambda: _sort_by("Title"))
+
+        tree.column("Abstained", width=80, anchor="center")
+        tree.column("ID", width=60, anchor="center")
+        tree.column("Speaker", width=200, anchor="w")
+        tree.column("Title", width=400, anchor="w")
+
+        yscroll = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=yscroll.set)
+
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        yscroll.pack(side=tk.RIGHT, fill=tk.Y)
+        # Tag config for visibility
+        tree.tag_configure("abstained_row", foreground="red")
+
+        # Internal state
+        # We work on a copy of abstained_ids
+        current_abstained = set(self.engine.abstained_ids)
+
+        # Sorting state
+        sort_col = "ID"
+        sort_reverse = False
+
+        def _populate(*args):
+             # Clear tree
+             for item in tree.get_children():
+                 tree.delete(item)
+
+             f_text = filter_var.get().lower()
+             only_abs = show_only_abstained.get()
+
+             data = []
+             all_talks = list(self.talks.values())
+
+             for t in all_talks:
+                 is_abs = t.talk_id in current_abstained
+
+                 # Filters
+                 if only_abs and not is_abs:
+                     continue
+                 if f_text:
+                     if (f_text not in t.title.lower() and
+                         f_text not in t.speaker.lower() and
+                         f_text not in t.talk_id):
+                         continue
+
+                 symbol = "◼" if is_abs else "◻"
+                 data.append((symbol, t.talk_id, t.speaker, t.title, is_abs))
+
+             # Sort
+             # key index mapping
+             key_idx = {"Abstained": 4, "ID": 1, "Speaker": 2, "Title": 3}
+             idx = key_idx.get(sort_col, 1)
+
+             # Special sort for ID if numeric
+             if sort_col == "ID":
+                 try:
+                    data.sort(key=lambda x: int(x[idx]), reverse=sort_reverse)
+                 except ValueError:
+                    data.sort(key=lambda x: x[idx], reverse=sort_reverse)
+             else:
+                 data.sort(key=lambda x: str(x[idx]).lower(), reverse=sort_reverse)
+
+             for item in data:
+                 # item: (symbol, tid, speaker, title, is_abs)
+                 # values excludes is_abs
+                 tree.insert("", "end", values=item[:4], tags=("abstained_row",) if item[4] else ())
+
+        def _sort_by(col):
+            nonlocal sort_col, sort_reverse
+            if sort_col == col:
+                sort_reverse = not sort_reverse
+            else:
+                sort_col = col
+                sort_reverse = False
+
+            # Update heading arrows (optional aesthetic, skipping for simplicity or adding simple markers)
+            for c in cols:
+                text = c if c != "Abstained" else "Abstain?"
+                suffix = " ▼" if (c == sort_col and not sort_reverse) else " ▲" if (c == sort_col and sort_reverse) else ""
+                tree.heading(c, text=text + suffix)
+
+            _populate()
+
+        def _on_click(event):
+            region = tree.identify_region(event.x, event.y)
+            if region == "heading":
+                return
+
+            item_id = tree.identify_row(event.y)
+            if not item_id:
+                return
+
+            col = tree.identify_column(event.x)
+            # col is like '#1', '#2'...
+
+            if col == "#1":
+                vals = tree.item(item_id, "values")
+                tid = vals[1]
+
+                if tid in current_abstained:
+                    current_abstained.remove(tid)
+                else:
+                    current_abstained.add(tid)
+
+                # New symbol
+                new_sym = "◼" if tid in current_abstained else "◻"
+                # vals is a tuple, need list to modify
+                new_vals = list(vals)
+                new_vals[0] = new_sym
+                # Also update tag for immediate feedback
+                if tid in current_abstained:
+                    tree.item(item_id, tags=("abstained_row",))
+                else:
+                    tree.item(item_id, tags=())
+                tree.item(item_id, values=new_vals)
+
+        tree.bind("<Button-1>", _on_click)
+
+        # Initial populate
+        _populate()
+
+        # Traces
+        filter_var.trace_add("write", lambda *args: _populate())
+        show_only_abstained.trace_add("write", lambda *args: _populate())
+
+        # Save
+        def _save():
+            if current_abstained != self.engine.abstained_ids:
+                self.engine.abstained_ids = current_abstained
+                self._autosave()
+
+                # If current set has abstained talks, skip
+                if any(tid in current_abstained for tid in self.current_ids):
+                    self.on_skip()
+
+                messagebox.showinfo("Abstentions Updated", f"Marked {len(current_abstained)} talks as abstained.")
+            _on_win_close()
+
+        btn_frame = ttk.Frame(win, padding=10)
+        btn_frame.pack(fill=tk.X, side=tk.BOTTOM)
+        ttk.Button(btn_frame, text="Save & Close", command=_save).pack(side=tk.RIGHT)
+        ttk.Button(btn_frame, text="Cancel", command=_on_win_close).pack(side=tk.RIGHT, padx=5)
+
     def on_export(self) -> None:
         if self.engine is None or not self.talks:
             return
@@ -1448,7 +1717,7 @@ class TalkRankerApp(tk.Tk):
         win = tk.Toplevel(self)
         win.title("Export Configuration")
         win.geometry("400x450")
-        
+
         # Center in parent
         x = self.winfo_rootx() + (self.winfo_width() // 2) - 200
         y = self.winfo_rooty() + (self.winfo_height() // 2) - 225
@@ -1458,7 +1727,7 @@ class TalkRankerApp(tk.Tk):
         lf_cols = ttk.LabelFrame(win, text="Included Columns", padding=10)
         lf_cols.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
-        col_order = ["Place", "Elo", "Score", "ID", "Speaker", "Title", "Track"]
+        col_order = ["ID", "Place", "Elo", "Score", "Speaker", "Title", "Track"]
         for col in col_order:
             if col in self.export_cols:
                 ttk.Checkbutton(lf_cols, text=col, variable=self.export_cols[col]).pack(anchor="w", pady=2)
@@ -1480,7 +1749,7 @@ class TalkRankerApp(tk.Tk):
              if not selected:
                  messagebox.showwarning("No columns", "Please select at least one column to export.", parent=win)
                  return
-             
+
              out = filedialog.asksaveasfilename(
                  title="Export Ranking CSV",
                  defaultextension=".csv",
@@ -1504,7 +1773,7 @@ class TalkRankerApp(tk.Tk):
              except Exception as e:
                 messagebox.showerror("Export failed", str(e), parent=win)
                 return
-             
+
              self._autosave()  # Persist config
              messagebox.showinfo("Export complete", f"Exported to:\n{out}", parent=win)
              win.destroy()
@@ -1637,10 +1906,12 @@ class TalkRankerApp(tk.Tk):
         pct = 0.0 if expected_rounds <= 0 else (100.0 * done_rounds / expected_rounds)
         pct = max(0.0, min(100.0, pct))
 
+        num_abstained = len(self.engine.abstained_ids)
         self.status_var.set(
             f"Comparisons expected: {expected_rounds}   "
             f"Comparisons done: {done_rounds}   "
             f"Total talks: {n}   "
+            f"Abstained: {num_abstained}   "
             f"Progress: {pct:.1f}%"
         )
 
