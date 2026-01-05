@@ -2,7 +2,8 @@
 
 A powerful, efficient tool for ranking conference talks using an Elo rating system. Compare talks side-by-side, assign ranks, and let the algorithm determine the best sessions based on your preferences.
 
-![Main Window](screenshots/placeholder_main_window.png)
+
+![Main Window](screenshots/main_window.png)
 *(Screenshot of the main comparison interface)*
 
 ## Features
@@ -10,7 +11,7 @@ A powerful, efficient tool for ranking conference talks using an Elo rating syst
 -   **Elo Ranking Engine**: Uses the robust Elo rating system to calculate relative skill/quality levels for each talk.
 -   **Side-by-Side Comparisons**: Compare 2, 3, or 4 talks at once to maximize ranking efficiency.
 -   **Smart Scheduling**: automatically prioritizes talks with high uncertainty (low "rounds seen") or similar ratings to give you the most impactful comparisons.
--   **Dynamic Layout**: 
+-   **Dynamic Layout**:
     -   Titles and speakers align perfectly across panels.
     -   Text resizing adapts to window width.
     -   Customizable fonts, sizes, and line spacing.
@@ -25,7 +26,7 @@ A powerful, efficient tool for ranking conference talks using an Elo rating syst
 This tool implements a modified Elo rating system designed specifically to minimize common ranking biases:
 
 ### 1. Adaptive K-Factor (Uncertainty Reduction)
--   **Concept**: New talks move fast; established talks are stable. 
+-   **Concept**: New talks move fast; established talks are stable.
 -   **Implementation**: $K$ starts at `base_k` and decays as pairwise counts increase:
     -   $K \propto \frac{1}{1 + PairsSeen / Decay}$
 -   **Improvements**:
@@ -77,6 +78,8 @@ If you have a conflict of interest or cannot judge a talk (e.g., your own talk o
     -   **Sort**: Click column headers to sort the list.
 3.  **Persistence**: The window remembers its size and position between sessions.
 
+![Manage Abstentions](screenshots/manage_abstentions.png)
+
 ## Installation
 
 1.  **Requirements**:
@@ -110,9 +113,15 @@ If you have a conflict of interest or cannot judge a talk (e.g., your own talk o
 
 ### Font Settings
 
+
+    ![Current Ranking](screenshots/current_ranking.png)
+
+### Current Ranking Window
+View the full leaderboard via **View -> Show Current Ranking...**.
+
 Customize the reading experience via **View -> Font Settings...**.
 
-![Font Settings](screenshots/placeholder_font_settings.png)
+![Font Settings](screenshots/font_settings.png)
 
 -   Change **Font Family** and **Size** for Titles, Speakers, and Abstracts independently.
 -   Adjust **Abstract Spacing** and **Title Spacing** to improve readability on large screens.
@@ -120,11 +129,45 @@ Customize the reading experience via **View -> Font Settings...**.
 ### Shortcuts
 
 -   **`1` ... `4`**: Assign rank to the corresponding panel.
-    -   *Logic*: The first time you press a number (e.g. `1`), the talk in Panel 1 gets the best available rank. Pressing it again might change it? 
-    -   *Correct Logic*: Pressing `1` assigns the *next available rank* to **Panel 1**. 
+    -   *Logic*: Pressing `1` assigns the *next available rank* to **Panel 1**.
     -   *Example*: Quick ranking: Press `3` (Panel 3 is #1), then `1` (Panel 1 is #2), then `2` (Panel 2 is #3).
 -   **`Shift + Enter`**: Submit the current ranking.
 -   **`Esc`**: Clear all ranks.
+
+## Interface Reference
+
+### Main Window Controls
+-   **Talks per comparison**: Select 2, 3, or 4 talks to compare simultaneously (default: 3).
+-   **Target appearances per talk**: Input how many times you want to review each talk (default: 10).
+-   **Exploration rate**: Slider. Left = Exploit (refine rankings), Right = Explore (new/random pairs).
+-   **Scale**: Spinboxes to set the specific Min/Max range for your custom score visualization (default: 1-9).
+-   **Action Buttons**:
+    -   **Submit ranking**: Confirm ranks and update ratings.
+    -   **Skip / New set**: Discard current set without ranking (no Elo change).
+    -   **Undo**: Revert the last submission.
+    -   **Show ranking**: Open the leaderboard window.
+    -   **Manage Abstentions**: Open the abstention manager.
+    -   **Export CSV**: Open export configuration.
+-   **Display Options (Checkboxes)**:
+    -   **Show Speaker**: Toggle speaker names.
+    -   **Show Abstract**: Toggle abstract text.
+    -   **Allow ties**: Enable assigning the same rank to multiple talks.
+    -   **Show Rank**: Toggle live display of Elo/Score in panels.
+    -   **Round Ranking**: Toggle rounding of displayed/exported numbers.
+-   **Status Bar**: Shows current session progress and total abstained count.
+
+### Menu Bar
+-   **File**
+    -   *Open Talks CSV...*: Load a new dataset.
+    -   *Export Ranking CSV...*: Save current results.
+    -   *Exit*: Save state and close.
+-   **View**
+    -   *Show Current Ranking...*: View the leaderboard.
+    -   *Font Settings...*: Customize typography.
+-   **Actions**
+    -   *Undo Last Comparison*: Step back one decision.
+    -   *Skip / New Set*: Get a fresh set of talks.
+    -   *Manage Abstentions...*: Handle conflicts of interest.
 
 ## Exporting
 
@@ -144,3 +187,9 @@ You can also enable **"Round Ranking"** in the main window (Display Options). Wh
 -   Elo ratings and User Scores are displayed as **whole numbers** (e.g. 1542, 9) in both the UI and Export.
 -   Exported CSV values are also rounded to integers.
 -   *Note*: Internal calculations always use full precision.
+
+    ![Export Configuration](screenshots/export_configuration.png)
+
+## Credits
+
+**Note:** The original version of this script was generated using **ChatGPT Pro 5.2**. All subsequent updates, refactoring, and feature implementations have been performed using [Google Antigravity GUI](https://antigravity.google) and **Gemini 3 Pro**.

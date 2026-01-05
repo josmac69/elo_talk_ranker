@@ -661,8 +661,8 @@ class TalkRankerApp(tk.Tk):
 
         # Session-level configuration (can be changed during session)
         self.compare_size = tk.IntVar(value=3)
-        self.target_appearances_per_talk = tk.IntVar(value=15)
-        self.explore_rate = tk.DoubleVar(value=0.35)
+        self.target_appearances_per_talk = tk.IntVar(value=10)
+        self.explore_rate = tk.DoubleVar(value=0.5)
         self.allow_ties = tk.BooleanVar(value=False)
 
         # Display controls (bias-related: can anonymize)
@@ -711,7 +711,7 @@ class TalkRankerApp(tk.Tk):
         # Build UI
 
         self.scale_min = tk.IntVar(value=1)
-        self.scale_max = tk.IntVar(value=10)
+        self.scale_max = tk.IntVar(value=9)
         self.show_current_rank = tk.BooleanVar(value=False)
 
         self.ranking_window_geometry: Optional[str] = None
