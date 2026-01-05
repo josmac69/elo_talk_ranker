@@ -111,13 +111,13 @@ If you have a conflict of interest or cannot judge a talk (e.g., your own talk o
     -   *High (Right)*: Show random or unrated talks to discover new candidates.
 -   **Target Appearances**: Set a goal for how many times you want to see each talk.
 
-### Font Settings
-
-
-    ![Current Ranking](screenshots/current_ranking.png)
-
 ### Current Ranking Window
+
 View the full leaderboard via **View -> Show Current Ranking...**.
+
+![Current Ranking](screenshots/current_ranking.png)
+
+### Font Settings
 
 Customize the reading experience via **View -> Font Settings...**.
 

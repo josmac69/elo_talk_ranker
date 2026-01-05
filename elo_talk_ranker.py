@@ -1611,7 +1611,7 @@ class TalkRankerApp(tk.Tk):
                          f_text not in t.talk_id):
                          continue
 
-                 symbol = "◼" if is_abs else "◻"
+                 symbol = "YES" if is_abs else "-"
                  data.append((symbol, t.talk_id, t.speaker, t.title, is_abs))
 
              # Sort
@@ -1671,7 +1671,7 @@ class TalkRankerApp(tk.Tk):
                     current_abstained.add(tid)
 
                 # New symbol
-                new_sym = "◼" if tid in current_abstained else "◻"
+                new_sym = "YES" if tid in current_abstained else "-"
                 # vals is a tuple, need list to modify
                 new_vals = list(vals)
                 new_vals[0] = new_sym
