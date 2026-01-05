@@ -68,12 +68,15 @@ If you have a conflict of interest or cannot judge a talk (e.g., your own talk o
 ### Functionality
 -   **Exclude**: Abstained talks are **never showed** in comparison sets.
 -   **Export**: They appear in the export but with empty ranking/score fields.
--   **Status Bar**: The number of abstained talks is tracked at the bottom of the window (`| Abstained: X`).
+7.  **Status Bar**: The window footer shows the total count of abstained talks.
+8.  **Main Window**: The main status bar updates immediately when you save changes in the abstain window.
 
 ### How to Manage
 1.  Click the **Manage Abstentions** button in the top toolbar (or selecting *Actions -> Manage Abstentions*).
 2.  In the dialog:
-    -   **Toggle**: Click the checkbox column (first column) to mark/unmark a talk. Abstained talks are highlighted in **Red** with a solid square (◼).
+    -   **Toggle**: Click the **Abstain?** column (first column) to mark/unmark a talk.
+        -   **YES**: Talk is abstained (Row turns Red).
+        -   **-**: Talk is active (available for ranking).
     -   **Filter**: Type to search for talks by ID, Speaker, or Title.
     -   **Sort**: Click column headers to sort the list.
 3.  **Persistence**: The window remembers its size and position between sessions.

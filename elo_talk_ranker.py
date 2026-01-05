@@ -1580,6 +1580,17 @@ class TalkRankerApp(tk.Tk):
         # Tag config for visibility
         tree.tag_configure("abstained_row", foreground="red")
 
+        # Bottom Frame for Help and Status
+        bottom_frame = ttk.Frame(win, padding=5)
+        bottom_frame.pack(side=tk.BOTTOM, fill=tk.X)
+
+        help_lbl = ttk.Label(bottom_frame, text="Click 'Abstain?' to toggle value. Click other columns to select/highlight row.", foreground="gray")
+        help_lbl.pack(side=tk.TOP, anchor="w")
+
+        status_var = tk.StringVar()
+        status_lbl = ttk.Label(bottom_frame, textvariable=status_var, font=("TkDefaultFont", 9, "bold"))
+        status_lbl.pack(side=tk.TOP, anchor="w")
+
         # Internal state
         # We work on a copy of abstained_ids
         current_abstained = set(self.engine.abstained_ids)
@@ -1648,6 +1659,7 @@ class TalkRankerApp(tk.Tk):
                 tree.heading(c, text=text + suffix)
 
             _populate()
+            _update_status()
 
         def _on_click(event):
             region = tree.identify_region(event.x, event.y)
@@ -1681,11 +1693,17 @@ class TalkRankerApp(tk.Tk):
                 else:
                     tree.item(item_id, tags=())
                 tree.item(item_id, values=new_vals)
+                _update_status()
 
         tree.bind("<Button-1>", _on_click)
 
+        def _update_status():
+            count = len(current_abstained)
+            status_var.set(f"Total Abstained: {count}")
+
         # Initial populate
         _populate()
+        _update_status()
 
         # Traces
         filter_var.trace_add("write", lambda *args: _populate())
@@ -1701,7 +1719,8 @@ class TalkRankerApp(tk.Tk):
                 if any(tid in current_abstained for tid in self.current_ids):
                     self.on_skip()
 
-                messagebox.showinfo("Abstentions Updated", f"Marked {len(current_abstained)} talks as abstained.")
+                self._update_status()
+                # messagebox.showinfo("Abstentions Updated", f"Marked {len(current_abstained)} talks as abstained.")
             _on_win_close()
 
         btn_frame = ttk.Frame(win, padding=10)
